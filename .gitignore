@@ -1,0 +1,7 @@
+# local scratch / build artifacts
+*.tmp
+*.bak
+_stock-run
+svc-plex-run
+data/
+config/
