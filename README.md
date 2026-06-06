@@ -25,6 +25,11 @@ This image injects a current, **self-contained musl Mesa `radeonsi` driver** (fr
 plus a matching `libva`, and wires Plex's transcoder + capability probe to use it — so
 **AMD H.264 hardware transcoding works**.
 
+> **Verified on Strix Halo** (Radeon 8060S, `gfx1151`): the injected bundle loads as
+> `Mesa Gallium 25.1.9 / LLVM 20.1.8`, initializes VAAPI, and H.264 hardware-encodes through
+> Plex's transcoder. The Mesa version tracks Alpine's `mesa-va-gallium`, so it advances
+> automatically with every rebuild — no version is pinned in this repo.
+
 ## ⚠️ What this does NOT do — HEVC encode
 
 It does **not** unlock HEVC/H.265 hardware **encoding**. Plex deliberately gates HEVC
@@ -90,7 +95,7 @@ adds AMD HEVC encode support, a normal pull picks it up.
 ## How it works (internals)
 
 1. **Stage 1** builds a self-contained musl Mesa `radeonsi` driver bundle from `alpine:3.22`
-   (current Mesa) including its full dependency closure + a matching `libva`.
+   (current Mesa — `25.1.9` at the time of writing) including its full dependency closure + a matching `libva`.
 2. **Stage 2** layers it onto `lscr.io/linuxserver/plex:latest`, wraps `Plex Transcoder` so
    each transcode uses the injected driver, and prepends the VAAPI env to the `svc-plex` s6
    run script so Plex's in-process capability probe uses it too.
