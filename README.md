@@ -7,7 +7,8 @@ Plex's bundled driver doesn't recognize.
 Built and published automatically on top of the **latest** `linuxserver/plex` every day.
 
 ```
-ghcr.io/panarican/plex-amd-vaapi:latest
+ghcr.io/panarican/plex-amd-vaapi:latest      # public/GA Plex channel
+ghcr.io/panarican/plex-amd-vaapi:plexpass    # Plex Pass beta channel
 ```
 
 ## The problem this solves
@@ -91,6 +92,25 @@ docker compose pull plex && docker compose up -d plex
 
 (or use [Watchtower](https://containrrr.dev/watchtower/) to auto-pull). When Plex eventually
 adds AMD HEVC encode support, a normal pull picks it up.
+
+### Plex Pass channel
+
+`linuxserver/plex:latest` only ever bundles the **public** PMS release — Plex Pass beta
+builds require an authenticated account check that LinuxServer's own public CI can't do.
+This repo's workflow can instead install the current **plexpass**-channel release before
+applying the driver layers, published as `:plexpass`.
+
+This needs a `PLEX_TOKEN` repo secret (your Plex account token). Set it yourself so it
+never appears in chat/shell history:
+
+```bash
+gh secret set PLEX_TOKEN --repo panarican/plex-amd-vaapi
+```
+
+The token is only ever mounted into the build via a BuildKit secret (`--mount=type=secret`),
+never a build-arg or `ENV`, so it can't end up baked into the published image's layers or
+`docker history` — this repo/image is public. Without the secret set, the `plexpass` build
+leg just fails (the `public`/`:latest` build is unaffected — `fail-fast: false`).
 
 ## How it works (internals)
 

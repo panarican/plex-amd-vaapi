@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Plex Media Server (LinuxServer base) + up-to-date AMD VAAPI driver for newer Radeon GPUs.
 #
 # Why this exists:
@@ -32,6 +33,32 @@ RUN set -eux; \
 
 # ---- stage 2: layer the driver onto the latest LinuxServer Plex ----
 FROM lscr.io/linuxserver/plex:latest
+
+# Optional: swap the image-bundled public-channel PMS for the Plex Pass beta channel.
+# Requires a Plex Pass account token, supplied ONLY as a BuildKit secret mount (never a
+# build-arg/ENV) so it never lands in an image layer or `docker history` — this image is
+# public. `set -eu` (no `-x`) is deliberate here: tracing would echo the token into the
+# (also public) GitHub Actions build log.
+ARG PLEX_CHANNEL=public
+RUN --mount=type=secret,id=plex_token set -eu; \
+    if [ "$PLEX_CHANNEL" = "plexpass" ]; then \
+        TOKEN="$(cat /run/secrets/plex_token 2>/dev/null || true)"; \
+        [ -n "$TOKEN" ] || { echo "PLEX_CHANNEL=plexpass requires the plex_token secret" >&2; exit 1; }; \
+        # plex.tv/api/downloads silently IGNORES a bad/expired token and falls back to the
+        # public channel instead of erroring, which would make this build silently mislabel
+        # a public build as plexpass. v2/user actually enforces auth, so check there first.
+        AUTH_STATUS="$(curl -s -o /dev/null -w '%{http_code}' 'https://plex.tv/api/v2/user' -H "X-Plex-Token: $TOKEN" -H 'X-Plex-Client-Identifier: plex-amd-vaapi-ci')"; \
+        [ "$AUTH_STATUS" = "200" ] || { echo "plex_token failed authentication (HTTP $AUTH_STATUS) - token invalid/expired" >&2; exit 1; }; \
+        apt-get update && apt-get install -y --no-install-recommends jq; \
+        PLEX_RELEASE="$(curl -fsS 'https://plex.tv/api/downloads/5.json?channel=plexpass' -H "X-Plex-Token: $TOKEN" | jq -r '.computer.Linux.version')"; \
+        [ -n "$PLEX_RELEASE" ] && [ "$PLEX_RELEASE" != "null" ] || { echo "could not resolve the plexpass release (bad/expired token?)" >&2; exit 1; }; \
+        echo "installing plexpass release $PLEX_RELEASE"; \
+        curl -fsSL -o /tmp/plexmediaserver.deb "https://downloads.plex.tv/plex-media-server-new/${PLEX_RELEASE}/debian/plexmediaserver_${PLEX_RELEASE}_amd64.deb"; \
+        dpkg -i /tmp/plexmediaserver.deb; \
+        rm -f /tmp/plexmediaserver.deb; \
+        apt-get purge -y jq && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 COPY --from=driver /vaapi-amdgpu /vaapi-amdgpu
 RUN set -eux; \
     mkdir -p /usr/share/libdrm; \

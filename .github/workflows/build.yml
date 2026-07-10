@@ -21,6 +21,14 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false            # a missing/expired PLEX_TOKEN shouldn't sink the public build
+      matrix:
+        include:
+          - channel: public
+            tag: latest
+          - channel: plexpass
+            tag: plexpass
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,15 +43,19 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push (latest Plex + AMD VAAPI driver)
+      - name: Build and push (${{ matrix.channel }} channel, latest Plex + AMD VAAPI driver)
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           pull: true               # always pull the freshest linuxserver/plex base
           provenance: false
+          build-args: |
+            PLEX_CHANNEL=${{ matrix.channel }}
+          secrets: |
+            plex_token=${{ secrets.PLEX_TOKEN }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/plex-amd-vaapi:latest
+            ghcr.io/${{ github.repository_owner }}/plex-amd-vaapi:${{ matrix.tag }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.description=Plex + AMD VAAPI driver for gfx1150/gfx1151 (H.264 HW transcode)
+            org.opencontainers.image.description=Plex + AMD VAAPI driver for gfx1150/gfx1151 (H.264 HW transcode) [${{ matrix.channel }} channel]
