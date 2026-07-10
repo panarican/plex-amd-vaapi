@@ -56,6 +56,11 @@ RUN --mount=type=secret,id=plex_token set -eu; \
         curl -fsSL -o /tmp/plexmediaserver.deb "https://downloads.plex.tv/plex-media-server-new/${PLEX_RELEASE}/debian/plexmediaserver_${PLEX_RELEASE}_amd64.deb"; \
         dpkg -i /tmp/plexmediaserver.deb; \
         rm -f /tmp/plexmediaserver.deb; \
+        # /build_version is cat'd verbatim by init-adduser at boot (LSIO branding banner);
+        # it's just a static file from the base image build, so rewrite it or the log keeps
+        # claiming the pre-swap public version even though a newer plexpass one is installed.
+        printf 'Linuxserver.io version: %s (plexpass channel via plex-amd-vaapi)\nBuild-date: %s\n' \
+            "$PLEX_RELEASE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /build_version; \
         apt-get purge -y jq && apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*; \
     fi
 
