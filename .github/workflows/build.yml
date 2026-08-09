@@ -33,7 +33,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Attempt 1 is allowed to fail: this step pulls the BuildKit image from Docker Hub,
+      # and a transient registry timeout here killed the 2026-08-07 build outright
+      # (ERROR: Get "https://registry-1.docker.io/v2/": context deadline exceeded).
       - name: Set up Docker Buildx
+        id: buildx
+        continue-on-error: true
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Back off before Buildx retry
+        if: steps.buildx.outcome == 'failure'
+        run: sleep 30
+
+      - name: Set up Docker Buildx (retry)
+        if: steps.buildx.outcome == 'failure'
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Log in to GHCR
@@ -59,3 +72,33 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.description=Plex + AMD VAAPI driver for gfx1150/gfx1151 (H.264 HW transcode) [${{ matrix.channel }} channel]
+
+  # A scheduled build that fails is otherwise silent - it just doesn't publish, and the
+  # server keeps running the previous image. Open (or comment on) an issue so it surfaces.
+  notify-failure:
+    needs: build
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update the build-failure issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="Automated build failed"
+          NUM=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 50 \
+                  --json number,title --jq "[.[] | select(.title==\"$TITLE\")][0].number // empty")
+          if [ -n "$NUM" ]; then
+            gh issue comment "$NUM" --repo "$GITHUB_REPOSITORY" \
+              --body "Failed again on \`${{ github.event_name }}\`: $RUN_URL"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" \
+              --body "The \`build-and-push\` workflow failed: $RUN_URL
+
+          The published image is now stale - the server keeps running whatever it last pulled.
+          Transient \`registry-1.docker.io\` timeouts are the known flake; re-running the job usually clears it."
+          fi
