@@ -73,6 +73,21 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.description=Plex + AMD VAAPI driver for gfx1150/gfx1151 (H.264 HW transcode) [${{ matrix.channel }} channel]
 
+  # GitHub disables scheduled workflows in a public repo after 60 days with no repository
+  # activity - this one went quiet on 2026-10-08, two months after the last commit, and
+  # published nothing for 13 days. Re-enabling it through the API on every scheduled run
+  # counts as activity, so the schedule never lapses (no dummy commits needed).
+  keepalive:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Keep the schedule enabled
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml/enable"
+
   # A scheduled build that fails is otherwise silent - it just doesn't publish, and the
   # server keeps running the previous image. Open (or comment on) an issue so it surfaces.
   notify-failure:
